@@ -48,6 +48,27 @@ class SSOTClient:
             logger.error("get_health_summary_all error: %s", e)
             return []
 
+    async def get_relationships(
+        self,
+        source_entity_id: str | None = None,
+        rel_type: str | None = None,
+    ) -> list[dict]:
+        """GET /relationships with optional source_entity_id and type filters."""
+        params = {}
+        if source_entity_id:
+            params["source_entity_id"] = source_entity_id
+        if rel_type:
+            params["type"] = rel_type
+        try:
+            resp = await self._client.get("/relationships", params=params)
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning("get_relationships failed: %d", resp.status_code)
+            return []
+        except httpx.HTTPError as e:
+            logger.error("get_relationships error: %s", e)
+            return []
+
     async def put_health_summary(self, payload: dict) -> bool:
         """PUT /health_summary with X-DHS-Key auth header."""
         try:

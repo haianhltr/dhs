@@ -8,6 +8,10 @@ EVAL_INTERVAL_SECONDS = int(os.environ.get("EVAL_INTERVAL_SECONDS", "30"))
 # External services
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus.observability:9090")
 SSOT_API_URL = os.environ.get("SSOT_API_URL", "http://ssot-api.ssot:8080")
+LOKI_URL = os.environ.get("LOKI_URL", "http://loki.observability.svc.cluster.local:3100")
+
+# Loki query timeout (seconds)
+LOKI_QUERY_TIMEOUT = int(os.environ.get("LOKI_QUERY_TIMEOUT", "5"))
 
 # Auth
 DHS_API_KEY = os.environ.get("DHS_API_KEY", "dhs-secret-key")

@@ -16,6 +16,8 @@ from ssot_client import SSOTClient
 from rule_loader import load_rules
 from state_engine import StateEngine
 from evaluator import Evaluator
+from root_cause import RootCauseResolver
+from event_enricher import EventEnricher
 
 # --- Structured JSON logging ---
 handler = logging.StreamHandler()
@@ -44,7 +46,13 @@ async def lifespan(app: FastAPI):
     ssot = SSOTClient()
     state_engine = StateEngine()
 
-    evaluator = Evaluator(prometheus, ssot, rule_files, state_engine)
+    root_cause_resolver = RootCauseResolver(ssot)
+    event_enricher = EventEnricher()
+
+    evaluator = Evaluator(
+        prometheus, ssot, rule_files, state_engine,
+        root_cause_resolver, event_enricher,
+    )
     eval_task = asyncio.create_task(evaluator.run_loop())
     logger.info(
         "DHS started — evaluator loop every %ds", config.EVAL_INTERVAL_SECONDS
@@ -60,10 +68,11 @@ async def lifespan(app: FastAPI):
             pass
     await prometheus.close()
     await ssot.close()
+    await event_enricher.close()
     logger.info("DHS shutdown complete")
 
 
-app = FastAPI(title="DHS", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="DHS", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/")

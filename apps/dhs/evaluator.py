@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from collections import defaultdict
 
 from prometheus_client import Counter, Histogram
 
@@ -13,6 +14,8 @@ from rule_loader import (
     HealthRule, RuleFile, matches_entity, render_promql, render_reason,
 )
 from state_engine import StateEngine
+from root_cause import RootCauseResolver, RootCause
+from event_enricher import EventEnricher, K8sEvent
 
 logger = logging.getLogger("dhs.evaluator")
 
@@ -34,11 +37,15 @@ class Evaluator:
         ssot: SSOTClient,
         rule_files: list[RuleFile],
         state_engine: StateEngine,
+        root_cause_resolver: RootCauseResolver,
+        event_enricher: EventEnricher,
     ):
         self.prometheus = prometheus
         self.ssot = ssot
         self.rule_files = rule_files
         self.state_engine = state_engine
+        self.root_cause_resolver = root_cause_resolver
+        self.event_enricher = event_enricher
         self.eval_count = 0
 
     def _get_entity_types_with_rules(self) -> set[str]:
@@ -121,7 +128,12 @@ class Evaluator:
             return config.DEBOUNCE_HEALTHY_SECONDS
         return 60
 
-    async def _evaluate_entity(self, entity: dict) -> int:
+    async def _evaluate_entity(
+        self,
+        entity: dict,
+        health_map: dict[str, str],
+        active_events: dict[str, list[K8sEvent]],
+    ) -> int:
         """Evaluate all rules for one entity. Returns 1 if transition fired, 0 otherwise."""
         entity_id = entity.get("entity_id", "")
         entity_type = entity.get("type", "")
@@ -151,6 +163,19 @@ class Evaluator:
                 )
                 continue
 
+        # Resolve root cause
+        rc = await self.root_cause_resolver.resolve(
+            entity_id=entity_id,
+            entity_type=entity_type,
+            derived_state=derived_state,
+            health_map=health_map,
+            active_events=active_events,
+        )
+
+        # Append root cause info to reason
+        if rc.reason_suffix:
+            reason = f"{reason}. {rc.reason_suffix}"
+
         debounce = self._get_debounce_seconds(derived_state, triggering_rule)
         transition = self.state_engine.update(
             entity_id=entity_id,
@@ -158,6 +183,7 @@ class Evaluator:
             derived_state=derived_state,
             reason=reason,
             debounce_seconds=debounce,
+            root_cause_entity_id=rc.entity_id,
         )
 
         if transition:
@@ -165,8 +191,8 @@ class Evaluator:
                 "entity_id": transition.entity_id,
                 "health_state": transition.new_state,
                 "since": transition.since.isoformat(),
-                "root_cause_entity_id": None,
-                "confidence": 0.0,
+                "root_cause_entity_id": rc.entity_id,
+                "confidence": rc.confidence,
                 "reason": transition.reason,
                 "last_updated_by": "dhs",
             }
@@ -175,6 +201,39 @@ class Evaluator:
 
         return 0
 
+    async def _build_health_map(self) -> dict[str, str]:
+        """Build entity_id → health_state map from SSOT (fresh each cycle)."""
+        summaries = await self.ssot.get_health_summary_all()
+        return {
+            s["entity_id"]: s.get("health_state", "UNKNOWN")
+            for s in summaries
+            if s.get("entity_id")
+        }
+
+    async def _build_active_events(
+        self, entities: list[dict],
+    ) -> dict[str, list[K8sEvent]]:
+        """Query Loki for K8s events across all relevant namespaces."""
+        # Collect unique namespaces from entity IDs
+        namespaces = set()
+        for entity in entities:
+            entity_id = entity.get("entity_id", "")
+            parts = entity_id.split(":")
+            if entity_id.startswith("k8s:") and len(parts) >= 5:
+                namespaces.add(parts[2])
+
+        # Query Loki for each namespace
+        events_by_name: dict[str, list[K8sEvent]] = defaultdict(list)
+        for ns in namespaces:
+            try:
+                events = await self.event_enricher.get_recent_events(namespace=ns)
+                for evt in events:
+                    events_by_name[evt.involved_object].append(evt)
+            except Exception as e:
+                logger.warning("Failed to get events for namespace %s: %s", ns, e)
+
+        return dict(events_by_name)
+
     async def run_cycle(self):
         """Run one full evaluation cycle across all entity types with rules."""
         start = time.time()
@@ -182,10 +241,26 @@ class Evaluator:
         total_entities = 0
         total_transitions = 0
 
+        # Build health map from SSOT (fresh authoritative data)
+        health_map = await self._build_health_map()
+
+        # Collect all entities first for event queries
+        all_entities = []
+        entities_by_type: dict[str, list[dict]] = {}
         for entity_type in entity_types:
             entities = await self.ssot.get_entities(entity_type=entity_type)
+            entities_by_type[entity_type] = entities
+            all_entities.extend(entities)
+
+        # Build active events from Loki
+        active_events = await self._build_active_events(all_entities)
+
+        # Evaluate all entities
+        for entity_type, entities in entities_by_type.items():
             for entity in entities:
-                transitions = await self._evaluate_entity(entity)
+                transitions = await self._evaluate_entity(
+                    entity, health_map, active_events,
+                )
                 total_entities += 1
                 total_transitions += transitions
 
@@ -204,8 +279,9 @@ class Evaluator:
         for s in summaries:
             entity_id = s.get("entity_id")
             state = s.get("health_state", "UNKNOWN")
+            root_cause = s.get("root_cause_entity_id")
             if entity_id:
-                self.state_engine.seed(entity_id, state)
+                self.state_engine.seed(entity_id, state, root_cause)
         logger.info("Seeded %d entity states from SSOT", len(summaries))
 
     async def run_loop(self):

@@ -49,6 +49,8 @@ spec:
               value: "/app/rules"
             - name: DHS_API_KEY
               value: "dhs-secret-key"
+            - name: LOKI_URL
+              value: "http://loki.observability.svc.cluster.local:3100"
           volumeMounts:
             - name: rules
               mountPath: /app/rules
