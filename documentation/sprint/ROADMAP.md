@@ -9,7 +9,7 @@
 
 ## Current State
 
-Sprint 2 complete. DHS evaluator loop running on k3s with root cause attribution and K8s event enrichment.
+Sprint 3 complete. DHS evaluator loop with root cause attribution, Kafka event emission, cooldown (de-escalation only), and flap detection deployed and verified on k3s.
 
 ---
 
@@ -34,12 +34,12 @@ Sprint 2     Root Cause Resolver + Event Enrichment          ✅ COMPLETE
     │         Events enrich reason text and boost confidence
     │
     ▼
-Sprint 3     Kafka Event Emitter + Transition Polish
+Sprint 3     Kafka Event Emitter + Transition Polish         ✅ COMPLETE
     │         Kafka producer for health.transition.v1 topic
     │         Transition events with ownership context from SSOT
-    │         Cooldown logic (no flip-back for 60s)
+    │         Cooldown logic (de-escalation only, 60s)
     │         Recovery debounce (healthy for 90s before marking HEALTHY)
-    │         Flap detection and suppression
+    │         Flap detection (deque, 2x debounce when >3 transitions in 600s)
     │
     ▼
 Sprint 4     Failure Scenario Validation
