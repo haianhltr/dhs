@@ -9,7 +9,7 @@
 
 ## Current State
 
-Sprint 1 complete. DHS evaluator loop running on k3s, writing health_summary to SSOT.
+Sprint 2 complete. DHS evaluator loop running on k3s with root cause attribution and K8s event enrichment.
 
 ---
 
@@ -26,10 +26,10 @@ Sprint 1     Evaluator Loop + State Engine (Core)        ✅ COMPLETE
     │         Deploy to k3s, verify with manual metric injection
     │
     ▼
-Sprint 2     Root Cause Resolver + Event Ingestor
-    │         Root cause resolution using SSOT topology (DEPENDS_ON edges)
+Sprint 2     Root Cause Resolver + Event Enrichment          ✅ COMPLETE
+    │         Root cause resolution using SSOT topology (DEPENDS_ON, OWNS, RUNS_ON)
     │         Confidence scoring (dependency vs ownership vs node vs self)
-    │         K8s event ingestor (Kafka consumer for k8s-events topic)
+    │         K8s event enrichment via Loki queries (not Kafka)
     │         Event normalization with TTL (CrashLoop, OOM, NodeNotReady)
     │         Events enrich reason text and boost confidence
     │

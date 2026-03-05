@@ -2,7 +2,7 @@
 
 **Goal:** Add topology-based root cause attribution and K8s event enrichment. After this sprint, every non-HEALTHY entity gets a `root_cause_entity_id` with confidence score, and K8s events (CrashLoopBackOff, OOMKilled) enrich the reason text and boost confidence.
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** Sprint 1 complete, Team 4 Sprint 2 (Registrar populating topology — ✅ complete)
 
 ---
