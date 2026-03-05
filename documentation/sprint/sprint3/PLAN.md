@@ -37,7 +37,8 @@
   - Uses `aiokafka.AIOKafkaProducer`
   - `async def start()` — connect to Kafka
   - `async def stop()` — flush and close
-  - `async def emit_transition(transition: Transition, entity: dict, ownership: dict) -> bool`
+  - `async def emit_transition(transition: Transition, entity: dict, root_cause: RootCause, ownership: dict) -> bool`
+    - Import `RootCause` from `root_cause.py`
     - Build event payload per `KAFKA_EVENTS.md` contract:
       ```python
       {
@@ -49,8 +50,8 @@
           "since": transition.since.isoformat(),
           "transition_time": transition.transition_time.isoformat(),
           "root_cause_entity_id": transition.root_cause_entity_id,
-          "root_cause_entity_name": transition.root_cause_entity_name,
-          "confidence": transition.confidence,
+          "root_cause_entity_name": root_cause.entity_name,
+          "confidence": root_cause.confidence,
           "reason": transition.reason,
           "owner_team": ownership.get("team", "unknown"),
           "tier": ownership.get("tier", "tier-3"),
@@ -59,6 +60,7 @@
           "schema_version": "v1"
       }
       ```
+    - **Important:** `root_cause_entity_name` and `confidence` come from the `RootCause` dataclass (root_cause.py:12-16), NOT from Transition. The Transition dataclass only has `root_cause_entity_id`. Do NOT add these fields to Transition — keep separation of concerns.
     - Key: `entity_id` (bytes) — ensures per-entity ordering
     - Headers: `[("event_type", b"health.transition"), ("schema_version", b"v1")]`
     - Instrument: `dhs_transition_events_emitted_total` counter
@@ -102,10 +104,11 @@ ssh 5560 "curl -s http://192.168.1.210:30900/ownership/k8s:lab:calculator:Servic
 
 **Modify `apps/dhs/evaluator.py`:**
 - Accept `kafka_emitter` in constructor
-- After a transition fires and SSOT write succeeds:
-  1. Fetch ownership for the entity from SSOT (or cache)
-  2. Call `kafka_emitter.emit_transition(transition, entity, ownership)`
-  3. Log success/failure
+- After a transition fires and SSOT write succeeds (in `_evaluate_entity`, after line 199):
+  1. Fetch ownership for the entity from SSOT (or use per-cycle cache from Milestone 2)
+  2. The `rc: RootCause` variable is already in scope — pass it directly
+  3. Call `kafka_emitter.emit_transition(transition, entity, rc, ownership)`
+  4. Log success/failure
 
 **Modify `apps/dhs/main.py`:**
 - Create `KafkaEmitter` on startup, call `start()`
@@ -125,14 +128,20 @@ ssh 5560 "curl -s http://192.168.1.210:30900/ownership/k8s:lab:calculator:Servic
 
 **Modify `apps/dhs/state_engine.py`:**
 
-- **Cooldown timer:**
+- **Cooldown timer (manager-corrected):**
   - After a transition fires, record `last_transition_time` per entity
-  - If `now() - last_transition_time < COOLDOWN_SECONDS` (default 60s) → suppress transition
-  - Exception: recovery to HEALTHY always respects the full 90s recovery debounce (already longer than cooldown)
+  - Severity order: `HEALTHY(0) < DEGRADED(1) < UNHEALTHY(2)`
+  - Add helper: `_severity(state) -> int`
+  - **Escalation** (severity increasing, e.g., DEGRADED→UNHEALTHY): **always allowed immediately** — never delay detection of worsening health
+  - **De-escalation** (severity decreasing, e.g., UNHEALTHY→DEGRADED, UNHEALTHY→HEALTHY): **suppressed during cooldown** — prevents flip-flop noise
+  - Only apply cooldown when `severity(new_state) <= severity(old_state)`
+  - Recovery to HEALTHY: 90s recovery debounce already exceeds 60s cooldown, so cooldown is never the binding constraint for full recovery
+  - Partial recovery (UNHEALTHY→DEGRADED): cooldown prevents premature "it's getting better" noise during oscillation
 
 - **Flap detection:**
-  - Track transition count per entity in a sliding window (e.g., last 10 minutes)
-  - If an entity has > 3 transitions in 10 minutes → mark as `flapping`
+  - Track transition timestamps per entity using `deque(maxlen=10)`
+  - Prune timestamps older than `FLAP_WINDOW_SECONDS` from the front when checking
+  - If an entity has > `FLAP_THRESHOLD` (3) transitions in `FLAP_WINDOW_SECONDS` (600s) → mark as `flapping`
   - When flapping:
     - Increase debounce durations by 2x
     - Log warning: "Entity X is flapping — extended debounce applied"
@@ -192,6 +201,12 @@ ssh 5560 "sudo kubectl exec -n calculator kafka-0 -- kafka-console-consumer.sh \
 **Status:** [ ] Not Started
 
 **`tests/e2e/test_transitions.py`:**
+
+> **Manager guidance (two-tier testing):**
+> - **Tier 1 — HTTP-based tests (CI, reliable, fast, run from Windows):** Test `dhs_transition_events_emitted_total` metric via `GET :30950/metrics`. This proves the emitter code path executed. These are the primary automated tests.
+> - **Tier 2 — Kafka content verification (Milestone 5 deployment step):** Use `ssh 5560 "kubectl exec kafka-0 ..."` to consume and verify event JSON. This is a manual/semi-automated deployment verification, NOT a CI test.
+> - For `test_transition_produces_kafka_event`: verify the metric counter incremented. Don't shell out to SSH in the test — trust the metric as proof of emission.
+
 ```python
 pytestmark = pytest.mark.sprint3
 
@@ -199,22 +214,16 @@ class TestKafkaEvents:
     def test_kafka_emitter_metric_exists(self, dhs_client):
         """dhs_transition_events_emitted_total metric should exist."""
 
-    def test_transition_produces_kafka_event(self):
-        """Trigger a transition and verify event appears on Kafka topic."""
+    def test_transition_emitted_via_metric(self, dhs_client):
+        """dhs_transition_events_emitted_total > 0 proves Kafka emission occurred."""
 
 class TestCooldown:
     def test_no_rapid_flip_back(self, dhs_client):
         """After a transition, verify no flip-back within cooldown period."""
 
 class TestTransitionPolish:
-    def test_event_has_ownership_context(self):
-        """Kafka event should include owner_team, tier, contact fields."""
-
-    def test_event_has_event_id(self):
-        """Kafka event should have unique event_id (UUID)."""
-
-    def test_event_schema_version(self):
-        """Kafka event should have schema_version='v1'."""
+    def test_dhs_version_is_sprint3(self, dhs_client):
+        """DHS version should be 0.3.0."""
 ```
 
 **Files to create:**
@@ -240,7 +249,7 @@ class TestTransitionPolish:
 | `aiokafka` for Kafka producer | Async-first, lightweight, well-tested. Matches the async evaluator loop. |
 | Kafka FQDN `kafka.calculator.svc.cluster.local:9092` | DHS is in `dhs` namespace, needs full FQDN to reach Kafka in `calculator` namespace. |
 | 3 Kafka partitions | Allows parallel consumption by team6 if needed. Key = entity_id for per-entity ordering. |
-| Cooldown 60s | Prevents alert spam during recovery oscillation. Matches HEALTH_STATES.md contract. |
+| Cooldown 60s (de-escalation only) | Manager correction: cooldown must NOT suppress escalation. Only apply when `severity(new) <= severity(old)`. Escalation always fires immediately. |
 | Flap detection at 3 transitions / 10 min | Conservative threshold — normal operation should never hit this. |
 | Graceful Kafka failure | DHS must keep evaluating even if Kafka is down. SSOT writes are the primary output. |
 

@@ -69,6 +69,18 @@ class SSOTClient:
             logger.error("get_relationships error: %s", e)
             return []
 
+    async def get_ownership(self, entity_id: str) -> dict:
+        """GET /ownership/{entity_id} — returns {team, tier, contact} or defaults."""
+        try:
+            resp = await self._client.get(f"/ownership/{entity_id}")
+            if resp.status_code == 200:
+                return resp.json()
+            logger.debug("get_ownership not found: %s (%d)", entity_id, resp.status_code)
+            return {}
+        except httpx.HTTPError as e:
+            logger.warning("get_ownership error: %s %s", entity_id, e)
+            return {}
+
     async def put_health_summary(self, payload: dict) -> bool:
         """PUT /health_summary with X-DHS-Key auth header."""
         try:

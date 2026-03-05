@@ -55,9 +55,10 @@ class TestEventEnrichment:
         # Just check the metric name is registered
         assert "dhs_events_ingested" in resp.text
 
-    def test_dhs_version_is_sprint2(self, dhs_client):
-        """DHS should report version 0.2.0 (Sprint 2)."""
+    def test_dhs_version_at_least_sprint2(self, dhs_client):
+        """DHS should report version >= 0.2.0 (Sprint 2+)."""
         resp = dhs_client.get("/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("version") == "0.2.0"
+        version = data.get("version", "0.0.0")
+        assert version >= "0.2.0", f"Expected version >= 0.2.0, got {version}"

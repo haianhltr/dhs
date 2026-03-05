@@ -26,3 +26,14 @@ RULES_DIR = os.environ.get("RULES_DIR", "/app/rules")
 
 # Prometheus query timeout (seconds)
 PROMETHEUS_QUERY_TIMEOUT = int(os.environ.get("PROMETHEUS_QUERY_TIMEOUT", "5"))
+
+# Kafka
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get(
+    "KAFKA_BOOTSTRAP_SERVERS", "kafka.calculator.svc.cluster.local:9092"
+)
+KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "health.transition.v1")
+
+# Cooldown + flap detection
+COOLDOWN_SECONDS = int(os.environ.get("COOLDOWN_SECONDS", "60"))
+FLAP_WINDOW_SECONDS = int(os.environ.get("FLAP_WINDOW_SECONDS", "600"))
+FLAP_THRESHOLD = int(os.environ.get("FLAP_THRESHOLD", "3"))

@@ -16,6 +16,7 @@ from rule_loader import (
 from state_engine import StateEngine
 from root_cause import RootCauseResolver, RootCause
 from event_enricher import EventEnricher, K8sEvent
+from kafka_emitter import KafkaEmitter
 
 logger = logging.getLogger("dhs.evaluator")
 
@@ -39,6 +40,7 @@ class Evaluator:
         state_engine: StateEngine,
         root_cause_resolver: RootCauseResolver,
         event_enricher: EventEnricher,
+        kafka_emitter: KafkaEmitter | None = None,
     ):
         self.prometheus = prometheus
         self.ssot = ssot
@@ -46,7 +48,9 @@ class Evaluator:
         self.state_engine = state_engine
         self.root_cause_resolver = root_cause_resolver
         self.event_enricher = event_enricher
+        self.kafka_emitter = kafka_emitter
         self.eval_count = 0
+        self._ownership_cache: dict[str, dict] = {}
 
     def _get_entity_types_with_rules(self) -> set[str]:
         """Return entity types that have at least one rule."""
@@ -196,10 +200,29 @@ class Evaluator:
                 "reason": transition.reason,
                 "last_updated_by": "dhs",
             }
-            await self.ssot.put_health_summary(payload)
+            ssot_ok = await self.ssot.put_health_summary(payload)
+
+            # Emit Kafka event after successful SSOT write
+            if ssot_ok and self.kafka_emitter:
+                ownership = await self._get_ownership_cached(entity_id)
+                try:
+                    await self.kafka_emitter.emit_transition(
+                        transition, entity, rc, ownership,
+                    )
+                except Exception as e:
+                    logger.error("Kafka emit error for %s: %s", entity_id, e)
+
             return 1
 
         return 0
+
+    async def _get_ownership_cached(self, entity_id: str) -> dict:
+        """Get ownership from per-cycle cache, fetching from SSOT on miss."""
+        if entity_id not in self._ownership_cache:
+            self._ownership_cache[entity_id] = await self.ssot.get_ownership(
+                entity_id
+            )
+        return self._ownership_cache[entity_id]
 
     async def _build_health_map(self) -> dict[str, str]:
         """Build entity_id → health_state map from SSOT (fresh each cycle)."""
@@ -237,6 +260,7 @@ class Evaluator:
     async def run_cycle(self):
         """Run one full evaluation cycle across all entity types with rules."""
         start = time.time()
+        self._ownership_cache.clear()
         entity_types = self._get_entity_types_with_rules()
         total_entities = 0
         total_transitions = 0

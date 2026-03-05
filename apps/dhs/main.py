@@ -18,6 +18,7 @@ from state_engine import StateEngine
 from evaluator import Evaluator
 from root_cause import RootCauseResolver
 from event_enricher import EventEnricher
+from kafka_emitter import KafkaEmitter
 
 # --- Structured JSON logging ---
 handler = logging.StreamHandler()
@@ -49,9 +50,17 @@ async def lifespan(app: FastAPI):
     root_cause_resolver = RootCauseResolver(ssot)
     event_enricher = EventEnricher()
 
+    # Kafka emitter — graceful failure if Kafka unreachable
+    kafka_emitter = KafkaEmitter()
+    try:
+        await kafka_emitter.start()
+    except Exception as e:
+        logger.warning("Kafka connection failed — continuing without Kafka: %s", e)
+        kafka_emitter = None
+
     evaluator = Evaluator(
         prometheus, ssot, rule_files, state_engine,
-        root_cause_resolver, event_enricher,
+        root_cause_resolver, event_enricher, kafka_emitter,
     )
     eval_task = asyncio.create_task(evaluator.run_loop())
     logger.info(
@@ -66,20 +75,22 @@ async def lifespan(app: FastAPI):
             await eval_task
         except asyncio.CancelledError:
             pass
+    if kafka_emitter:
+        await kafka_emitter.stop()
     await prometheus.close()
     await ssot.close()
     await event_enricher.close()
     logger.info("DHS shutdown complete")
 
 
-app = FastAPI(title="DHS", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="DHS", version="0.3.0", lifespan=lifespan)
 
 
 @app.get("/")
 async def root():
     return {
         "service": "dhs",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "uptime_seconds": round(time.time() - start_time, 1),
         "eval_count": evaluator.eval_count if evaluator else 0,
     }

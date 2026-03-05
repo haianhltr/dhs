@@ -51,6 +51,16 @@ spec:
               value: "dhs-secret-key"
             - name: LOKI_URL
               value: "http://loki.observability.svc.cluster.local:3100"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka.calculator.svc.cluster.local:9092"
+            - name: KAFKA_TOPIC
+              value: "health.transition.v1"
+            - name: COOLDOWN_SECONDS
+              value: "60"
+            - name: FLAP_WINDOW_SECONDS
+              value: "600"
+            - name: FLAP_THRESHOLD
+              value: "3"
           volumeMounts:
             - name: rules
               mountPath: /app/rules
