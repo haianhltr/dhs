@@ -85,7 +85,7 @@ data:
       - name: broker_down
         state: UNHEALTHY
         duration: 120
-        promql: "kafka_brokers"
+        promql: "kafka_brokers or vector(0)"
         threshold: 1
         operator: "<"
         reason: "Kafka broker count {{ value }} < 1 for >2m"
@@ -96,7 +96,7 @@ data:
       - name: unreachable
         state: UNHEALTHY
         duration: 60
-        promql: "pg_up"
+        promql: "pg_up or vector(0)"
         threshold: 1
         operator: "<"
         reason: "Postgres unreachable for >60s"

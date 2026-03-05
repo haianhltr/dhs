@@ -3,7 +3,7 @@ rules:
   - name: unreachable
     state: UNHEALTHY
     duration: 60
-    promql: "pg_up"
+    promql: "pg_up or vector(0)"
     threshold: 1
     operator: "<"
     reason: "Postgres unreachable for >60s"
