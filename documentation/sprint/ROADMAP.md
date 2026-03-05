@@ -9,14 +9,14 @@
 
 ## Current State
 
-Nothing exists. Greenfield build.
+Sprint 1 complete. DHS evaluator loop running on k3s, writing health_summary to SSOT.
 
 ---
 
 ## Sprint Sequence
 
 ```
-Sprint 1     Evaluator Loop + State Engine (Core)
+Sprint 1     Evaluator Loop + State Engine (Core)        ✅ COMPLETE
     │         dhs namespace, Python project structure
     │         Prometheus query client, SSOT API client
     │         Health rule loader (YAML → evaluator)
