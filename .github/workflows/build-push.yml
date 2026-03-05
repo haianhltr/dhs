@@ -1,0 +1,35 @@
+name: Build and Push DHS Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "rules/**"
+
+env:
+  REGISTRY: ghcr.io
+  REPO: haianhltr/dhs
+
+jobs:
+  build-dhs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push DHS image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/dhs
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.REPO }}/dhs:latest
