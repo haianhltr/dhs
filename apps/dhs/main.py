@@ -79,7 +79,7 @@ app = FastAPI(title="DHS", version="0.2.0", lifespan=lifespan)
 async def root():
     return {
         "service": "dhs",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "uptime_seconds": round(time.time() - start_time, 1),
         "eval_count": evaluator.eval_count if evaluator else 0,
     }
