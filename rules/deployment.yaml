@@ -1,0 +1,27 @@
+entity_type: Deployment
+rules:
+  - name: replica_unavailable
+    state: UNHEALTHY
+    duration: 60
+    promql: |
+      kube_deployment_status_replicas_available{
+        namespace="{{ namespace }}", deployment="{{ name }}"
+      }
+    threshold: 0
+    operator: "=="
+    reason: "Deployment {{ name }} has 0 available replicas for >60s"
+
+  - name: replica_degraded
+    state: DEGRADED
+    duration: 60
+    promql_desired: |
+      kube_deployment_spec_replicas{
+        namespace="{{ namespace }}", deployment="{{ name }}"
+      }
+    promql_available: |
+      kube_deployment_status_replicas_available{
+        namespace="{{ namespace }}", deployment="{{ name }}"
+      }
+    threshold: null
+    operator: "available < desired"
+    reason: "Deployment {{ name }} has {{ available }}/{{ desired }} replicas for >60s"

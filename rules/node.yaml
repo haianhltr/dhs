@@ -1,0 +1,12 @@
+entity_type: Node
+rules:
+  - name: not_ready
+    state: UNHEALTHY
+    duration: 60
+    promql: |
+      kube_node_status_condition{
+        node="{{ name }}", condition="Ready", status="true"
+      }
+    threshold: 1
+    operator: "<"
+    reason: "Node {{ name }} not ready for >60s"

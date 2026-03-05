@@ -1,0 +1,20 @@
+entity_type: Service
+match_labels:
+  component: worker
+rules:
+  - name: high_failure_rate
+    state: UNHEALTHY
+    duration: 180
+    promql: "calculator:worker_failure_rate:5m"
+    threshold: 0.1
+    operator: ">"
+    reason: "Worker failure rate {{ value }}% > 10% for >3m"
+
+  - name: high_lag
+    state: DEGRADED
+    duration: 300
+    promql: |
+      calculator:kafka_consumer_lag
+    threshold: 100
+    operator: ">"
+    reason: "Consumer lag {{ value }} > 100 for >5m"

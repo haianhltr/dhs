@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dhs-rules
+  namespace: dhs
+  labels:
+    app.kubernetes.io/name: dhs
+    team: team5
+data:
+  deployment.yaml: |
+    entity_type: Deployment
+    rules:
+      - name: replica_unavailable
+        state: UNHEALTHY
+        duration: 60
+        promql: |
+          kube_deployment_status_replicas_available{
+            namespace="{{ namespace }}", deployment="{{ name }}"
+          }
+        threshold: 0
+        operator: "=="
+        reason: "Deployment {{ name }} has 0 available replicas for >60s"
+
+      - name: replica_degraded
+        state: DEGRADED
+        duration: 60
+        promql_desired: |
+          kube_deployment_spec_replicas{
+            namespace="{{ namespace }}", deployment="{{ name }}"
+          }
+        promql_available: |
+          kube_deployment_status_replicas_available{
+            namespace="{{ namespace }}", deployment="{{ name }}"
+          }
+        threshold: null
+        operator: "available < desired"
+        reason: "Deployment {{ name }} has {{ available }}/{{ desired }} replicas for >60s"
+
+  service-api.yaml: |
+    entity_type: Service
+    match_labels:
+      component: api
+    rules:
+      - name: high_error_rate
+        state: UNHEALTHY
+        duration: 120
+        promql: "calculator:api_error_rate:5m"
+        threshold: 0.05
+        operator: ">"
+        reason: "API error rate {{ value }}% > 5% for >2m"
+
+      - name: high_latency
+        state: DEGRADED
+        duration: 300
+        promql: "calculator:api_latency_p99:5m"
+        threshold: 2.0
+        operator: ">"
+        reason: "API p99 latency {{ value }}s > 2.0s SLO for >5m"
+
+  service-worker.yaml: |
+    entity_type: Service
+    match_labels:
+      component: worker
+    rules:
+      - name: high_failure_rate
+        state: UNHEALTHY
+        duration: 180
+        promql: "calculator:worker_failure_rate:5m"
+        threshold: 0.1
+        operator: ">"
+        reason: "Worker failure rate {{ value }}% > 10% for >3m"
+
+      - name: high_lag
+        state: DEGRADED
+        duration: 300
+        promql: |
+          calculator:kafka_consumer_lag
+        threshold: 100
+        operator: ">"
+        reason: "Consumer lag {{ value }} > 100 for >5m"
+
+  kafka.yaml: |
+    entity_type: Kafka
+    rules:
+      - name: broker_down
+        state: UNHEALTHY
+        duration: 120
+        promql: "kafka_brokers"
+        threshold: 1
+        operator: "<"
+        reason: "Kafka broker count {{ value }} < 1 for >2m"
+
+  database.yaml: |
+    entity_type: Database
+    rules:
+      - name: unreachable
+        state: UNHEALTHY
+        duration: 60
+        promql: "pg_up"
+        threshold: 1
+        operator: "<"
+        reason: "Postgres unreachable for >60s"
+
+  node.yaml: |
+    entity_type: Node
+    rules:
+      - name: not_ready
+        state: UNHEALTHY
+        duration: 60
+        promql: |
+          kube_node_status_condition{
+            node="{{ name }}", condition="Ready", status="true"
+          }
+        threshold: 1
+        operator: "<"
+        reason: "Node {{ name }} not ready for >60s"

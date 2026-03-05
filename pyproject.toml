@@ -1,0 +1,15 @@
+[project]
+name = "dhs-tests"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 30
+markers = [
+    "sprint1: Sprint 1 — Evaluator Loop + State Engine (core loop, SSOT writes)",
+    "sprint2: Sprint 2 — Root Cause Resolver + Event Ingestor",
+    "sprint3: Sprint 3 — Kafka Event Emitter + Transition Polish",
+    "sprint4: Sprint 4 — Failure Scenario Validation",
+    "sprint5: Sprint 5 — CI/CD + Integration + Contract Docs",
+]

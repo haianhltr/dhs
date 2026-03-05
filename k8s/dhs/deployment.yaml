@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dhs
+  namespace: dhs
+  labels:
+    app.kubernetes.io/name: dhs
+    app.kubernetes.io/component: evaluator
+    app.kubernetes.io/part-of: dhs
+    team: team5
+    env: lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dhs
+  template:
+    metadata:
+      labels:
+        app: dhs
+        app.kubernetes.io/name: dhs
+        app.kubernetes.io/component: evaluator
+        app.kubernetes.io/part-of: dhs
+        team: team5
+        env: lab
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: dhs
+          image: ghcr.io/haianhltr/dhs/dhs:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PROMETHEUS_URL
+              value: "http://prometheus.observability:9090"
+            - name: SSOT_API_URL
+              value: "http://ssot-api.ssot:8080"
+            - name: EVAL_INTERVAL_SECONDS
+              value: "30"
+            - name: DEBOUNCE_DEGRADED_SECONDS
+              value: "60"
+            - name: DEBOUNCE_UNHEALTHY_SECONDS
+              value: "60"
+            - name: DEBOUNCE_HEALTHY_SECONDS
+              value: "90"
+            - name: RULES_DIR
+              value: "/app/rules"
+            - name: DHS_API_KEY
+              value: "dhs-secret-key"
+          volumeMounts:
+            - name: rules
+              mountPath: /app/rules
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: rules
+          configMap:
+            name: dhs-rules

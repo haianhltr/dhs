@@ -1,0 +1,9 @@
+entity_type: Database
+rules:
+  - name: unreachable
+    state: UNHEALTHY
+    duration: 60
+    promql: "pg_up"
+    threshold: 1
+    operator: "<"
+    reason: "Postgres unreachable for >60s"

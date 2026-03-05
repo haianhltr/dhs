@@ -1,0 +1,19 @@
+entity_type: Service
+match_labels:
+  component: api
+rules:
+  - name: high_error_rate
+    state: UNHEALTHY
+    duration: 120
+    promql: "calculator:api_error_rate:5m"
+    threshold: 0.05
+    operator: ">"
+    reason: "API error rate {{ value }}% > 5% for >2m"
+
+  - name: high_latency
+    state: DEGRADED
+    duration: 300
+    promql: "calculator:api_latency_p99:5m"
+    threshold: 2.0
+    operator: ">"
+    reason: "API p99 latency {{ value }}s > 2.0s SLO for >5m"

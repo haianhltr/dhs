@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dhs
+  labels:
+    team: team5
+    purpose: dhs
