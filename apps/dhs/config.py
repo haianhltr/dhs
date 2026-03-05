@@ -1,4 +1,4 @@
-"""DHS configuration — all values from environment variables with defaults."""
+"""DHS configuration — all values loaded from environment variables with defaults."""
 
 import os
 
